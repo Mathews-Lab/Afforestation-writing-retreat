@@ -1,0 +1,10 @@
+﻿,LCM_Broad,AreaTotal,Estimate,LowerCI,UpperCI,AreaPercent,PopSizePercent,No.Experts
+1,"Broad_leaved,_mixed_and_yew_woodland",1200000,9,6,10,10.5,39,2
+2,HedgerowsAES,139000,10.53,0,21.05,1.2,5,#N/A
+3,HedgerowsNonAES,311000,6.3,1.8,20,2.7,7,2
+5,Built_up_areas_and_gardens,1320000,4.5,3.02,7,11.5,22,2
+6,Coniferous_woodland,944000,5,3.5,12,8.3,17,2
+7,Dwarf_shrub_heath,966000,1,0.05,3,8.5,4,1
+8,Fen_marsh_and_swamp,6950,30,0,50,0.1,1,1
+9,Improved_grassland,6070000,0.1,0,1,53.2,2,1
+10,Rough_low-productivity_grassland,900000,1,0,3,7.9,3,3
