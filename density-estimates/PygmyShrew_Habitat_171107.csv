@@ -1,0 +1,9 @@
+"","...1","LCM_Broad","AreaTotal","Estimate","LowerCI","UpperCI","AreaPercent","PopSizePercent"
+"1","1","Rough_low-productivity_grassland",823000,4.8,1.2,4.8,8,63
+"2","3","Bog",333000,3,0,8.5,3.2,16
+"3","4","Broad_leaved,_mixed_and_yew_woodland",1100000,1,0,3,10.7,17
+"4","5","Built_up_areas_and_gardens",1250000,0.1,0,5,12.2,2
+"5","8","Dwarf_shrub_heath",870000,0.1,0,5,8.5,1
+"6","9","Fen_marsh_and_swamp",7190,0.02,0,2,0.1,0
+"7","11","HedgerowsNonAES",427000,0.1,0.01,30,4.2,1
+"8","12","Improved_grassland",5440000,0,0,1,53.1,0
