@@ -1,2 +1,4 @@
-# Afforestation-writing-retreat
-Place to keep code for the afforestation writing retreat project 
+# Afforestation-writing-retreat - Jan 2022
+This repository is used to store files and code used in our analyses
+
+
