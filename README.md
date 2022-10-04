@@ -7,5 +7,4 @@ Folders with data:
 - 'planting-simulation' contains results from our simulated afforestation scenarios - the area of each suitable habitat within species ranges
 
 Code:
-- 
-A line I wrote on my local computer  
+- Pop_estimates.R is used to calculate the estimated population densities from the simulated planting scenarios
