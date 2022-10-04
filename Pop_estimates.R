@@ -1,5 +1,4 @@
 
-
 ### Code used to estimate species population size from habitat sizes & density estimates ###
 ### Adapted from 2018 mammal review by Bronwen Hunter (27/01/22) ###
 
@@ -17,22 +16,22 @@ library(ggplot2)
 library(rvest)
 
 
-
 ##### SECTION FOR FUNCTIONS USED IN DATA WRANGLING & ANALYSIS ####
 
-# This is where the population density esimtates are stored in github
-url <- 'https://github.com/Mathews-Lab/Afforestation-writing-retreat/tree/main/density-estimates/'
+# This is where the population density esimtates are stored in github 
+# (not required if working from cloned repo)
+#url <- 'https://github.com/Mathews-Lab/Afforestation-writing-retreat/tree/main/density-estimates/'
 
-github_files <-function(folder_url){
-  listoffiles <-folder_url %>%
-    read_html() %>%
-    html_nodes(xpath = '//*[@role="rowheader"]') %>%
-    html_nodes('span a') %>%
-    html_attr('href') %>%
-    sub('blob/', '', .) %>%
-    paste0('https://raw.github.com', .)
-  return(listoffiles)
-  }
+#github_files <-function(folder_url){
+  #listoffiles <-folder_url %>%
+    #read_html() %>%
+    #html_nodes(xpath = '//*[@role="rowheader"]') %>%
+    #html_nodes('span a') %>%
+    #html_attr('href') %>%
+   #sub('blob/', '', .) %>%
+    #paste0('https://raw.github.com', .)
+  #return(listoffiles)
+  #}
 
 # Convert units it Km^2
 
@@ -40,7 +39,6 @@ convert_units <- function(Ha){
   km2 <- Ha*0.01
   return (km2)
 }
-
 
 # Function to calculate population estimates
 population_esimate <- function(area_df, density_df, species_name){
@@ -65,8 +63,6 @@ population_esimate <- function(area_df, density_df, species_name){
   
 
 # Applying this function to all species and returning new dfs - Wales
-directory <- '/Users/bronwenhunter/desktop/'
-
 
 produce_all_results <- function(country,
                                 area_df,
@@ -89,15 +85,14 @@ produce_all_results <- function(country,
 ##### RUN THE ANALYSIS HERE ####
 
 # First define the directory where you want the results to be saved
-directory <- "/Users/bronwenhunter/Desktop/"
+dir.create('results')
 
 ## First we need to produce a list of density estimates files & read them in: 
-density <- "https://github.com/Mathews-Lab/Afforestation-writing-retreat/tree/main/density-estimates"
-root <- "https://raw.github.com/Mathews-Lab/Afforestation-writing-retreat/main/density-estimates/"
+
 DensityFiles <- list()
-for(file in github_files(density)){
-  name <- (str_match(file, paste(root, '\\s*(.*?)\\s*_', sep='')))[1,2] # Saving each df based on its name
-  df <- read.csv(file)
+for(file in list.files('density-estimates')){
+  name <- file # Saving each df based on its name
+  df <- read.csv(paste('density-estimates/', file, sep=""))
   assign(name, df)
   DensityFiles[[name]] <- df # Adding these to a named list
   print(paste("Read in file ", name))
@@ -105,19 +100,18 @@ for(file in github_files(density)){
 
 
 # Now the same with the planting simulations for England, Scotland & Wales
-planting_simulations <- "https://github.com/Mathews-Lab/Afforestation-writing-retreat/tree/main/planting-simulation"
-root <- 'https://raw.github.com/Mathews-Lab/Afforestation-writing-retreat/main/planting-simulation/'
+
 AreaFiles <- list()
-for(file in github_files(planting_simulations)){
-  name <- (str_match(file, paste(root, 'Final_\\s*(.*?)\\_', sep='')))[1,2] # Saving each df based on its name
-  df <- read.csv(file)
+for(file in list.files('planting-simulation')){
+  name <- (file) # Saving each df based on its name
+  df <- read.csv(paste('planting-simulation/', file, sep=''))
   assign(name, df)
   AreaFiles[[name]] <- df # Adding these to a named list
   print(paste("Read in file ", name))
 }
 
 # Reading in the file used to match species names
-species_names <- read.csv('https://raw.githubusercontent.com/Mathews-Lab/Afforestation-writing-retreat/main/species%20names.csv')
+species_names <- read.csv('species names.csv')
 
 # Now produce the results separately for England, Scotland & Wales
-produce_all_results('Wales', AreaFiles$Wales, DensityFiles[2:4], species_names, directory)
+
