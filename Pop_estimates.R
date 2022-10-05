@@ -149,13 +149,4 @@ for(file in list.files('planting-simulation')){
 species_names <- read.csv('species names.csv')
 habitat_conversion <- read.csv('LCM_conversion.csv')
 
-population_estimate(Final_Wales_Data, 
-                    Fox_Habitat_171107,
-                   'Vulpes vulpes',
-                   habitat_conversion,
-                   species_names) 
-
 produce_all_results('Wales', Final_Wales_Data, DensityFiles, species_names, habitat_conversion, 'results/')
-
-
-list.files('density-estimates')  
