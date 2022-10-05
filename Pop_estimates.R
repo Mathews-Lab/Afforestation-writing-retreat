@@ -63,10 +63,8 @@ population_estimate <- function(area_df,
   } else {
     area_subset$LCM_Broad <- area_subset$density_name
   }
-  print(nrow(area_subset))
   area_subset2 <- aggregate(x=area_subset$Projected_Area, by = list(area_subset$LCM_Broad), FUN=sum)
   names(area_subset2) <- c("LCM_Broad", "Projected_Area")
-  print(area_subset2)
   results1 <- left_join(density_df, area_subset2)
   results1$PriorPop <- results1$AreaTotal* results1$Estimate
   results1$PriorPop_LowerCI <- results1$LowerCI * results1$AreaTotal
@@ -103,7 +101,7 @@ produce_all_results <- function(country,
     df <- listoffiles[[item]]
     taxa <- str_split(item, '_')[[1]][1]
     name <- names_df$scientific[match(taxa, names_df$common)]
-    results <-population_estimate(area_df, df, name, habitat_names)
+    results <-population_estimate(area_df, df, name, habitat_names, names_df)
     if(names_df$density[match(name, species_names$scientific)] == 'Km'){
       df$Density_scale <- "Per_Ha"
       } else {
@@ -151,10 +149,13 @@ for(file in list.files('planting-simulation')){
 species_names <- read.csv('species names.csv')
 habitat_conversion <- read.csv('LCM_conversion.csv')
 
-population_estimate(Final_Wales_Data, Fox_Habitat_171107,
+population_estimate(Final_Wales_Data, 
+                    Fox_Habitat_171107,
                    'Vulpes vulpes',
                    habitat_conversion,
                    species_names) 
 
-produce_all_results('Wales', Final_Wales_BizUsual, DensityFiles, species_names, habitat_conversion, 'results/')
-       
+produce_all_results('Wales', Final_Wales_Data, DensityFiles, species_names, habitat_conversion, 'results/')
+
+
+list.files('density-estimates')  
