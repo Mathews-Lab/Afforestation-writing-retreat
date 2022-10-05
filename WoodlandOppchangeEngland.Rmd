@@ -1,0 +1,497 @@
+---
+title: "Writing_retreat"
+author: "P Wright"
+date: "27/01/2022"
+output: html_document
+---
+
+```{r}
+library(plyr)
+library(dplyr)
+library(rgdal)
+library(raster)
+library(textshape)
+
+mypath="C:/Users/patrick.wright/Work Folders/Documents/Writing retreat"
+```
+
+#56000 lower target Wales
+#112000 upper target Wales
+#180000 25y target
+
+
+Data prep
+
+```{r}
+score<-raster(paste(mypath, "/england_opportunity_woodland_v4_smart_buffered.tif", sep="")) #dsn="gwc21_overall_score_water_and_nfi_erased", layer="gwc21_overall_score_water_and_nfi_erased")
+bng<-crs(score)
+#score<-subset(score, grid_code > 23.40 )#only keep scores of 23.5 or more
+score[score==0] <- NA
+
+
+England<-readOGR(dsn=mypath,layer="england")
+England<-spTransform(England, bng)#british national grid
+
+# Doesn't need to be repeated aggregating LCM to 100m in Wales
+# lcm2020<-raster("C:/Users/patrick.wright/Work Folders/Documents/Writing retreat/lcm-2020-25m_4384650/gb2020lcm25m.tif")
+# lcm2020<-crop(lcm2020,extent(Wales))
+# lcm2020<-aggregate(lcm2020, 4, fun='max')
+
+extW <- floor(extent(England))#create raster of wales
+
+ScoreRas<-aggregate(score,2, method='max')
+plot(ScoreRas)
+
+EnRas <- raster(extW, res=100)
+EnRas[is.na(EnRas[])] <- 1
+EngRas<-mask(EnRas, England)
+crs(EngRas)<-bng#create raster of Wales
+Area_England<-cellStats(EngRas, 'sum')#total area of wales in ha
+
+#ScoreRas<-mask(WalRas, score) #create raster of woodland opportunity - Map is already made do not recreate
+#ScoreRas<-raster(paste(mypath,"/woodlandOppEngland100m.tif", sep=TRUE)) 
+Area_Score<-cellStats(ScoreRas, 'sum')#total area of woodland opportunity in ha
+
+lcm2020<-raster(paste(mypath, "/lcm2020.tif", sep=""))
+
+```
+
+
+```{r }
+
+#56000 lower target
+#112000 upper target
+England_target<-230400
+input_path <- "C:/Users/patrick.wright/Work Folders/Documents/Writing retreat/Species/"#location of shapefiles
+Files <- list.files(input_path, pattern = "[.]shp$", full.names=TRUE)
+Files
+
+
+shps<-lapply(Files, readOGR)
+
+
+Numb<-c(11:64)#number of shapefiles
+
+
+
+Woodland_creationUpper <- lapply(Numb,function(x) {
+  #Files1 <- paste(input_path, i, sep="")
+  Species <- shps[[x]]
+  print("1")
+  Species<-spTransform(Species, CRS("+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +units=m +no_defs"))#british national grid
+  print("2")
+  
+  Sp_name<-paste(x)
+  print("3")
+  
+  EngRasSPecies<-mask(EngRas ,Species)#create raster of a sp. distribution
+  maxV<-maxValue(EngRasSPecies)#to skip any sp that are not present in the country
+  print("Check NAs")
+  for(val in maxV){
+  if ( is.na(val))    {
+    next
+  }
+  
+  print("Check pass")
+  
+  WoodlandCre_species<-EngRasSPecies%>%
+    projectRaster(ScoreRas)%>%
+    mask(ScoreRas)#raster of woodland opportunity within sp distribution
+print("A")
+
+  crs(WoodlandCre_species)<- bng
+  Area_Sp<-cellStats(EngRasSPecies, 'sum')#total area of species in ha
+  WoodlandOpp_Sp<-cellStats(WoodlandCre_species, 'sum')#total area of woodland creation for species in ha
+  
+  
+  Areaforplanting<-round((England_target*WoodlandOpp_Sp)/Area_Score)#Estimated amount of woodland planted in the sp distribution
+
+  
+  lcmWoodCre_Spe<-lcm2020%>% #land cover map of species od woodland opp inside sp range
+    projectRaster(WoodlandCre_species,method='ngb')%>%
+    mask(WoodlandCre_species)
+  
+  lcmWoodCre_Spe[lcmWoodCre_Spe == 1] <- NA #remove any broadleaved woodland
+
+    print("B")
+
+  
+  
+  x2<-rdply(100,sampleRandom(lcmWoodCre_Spe, Areaforplanting, cells=TRUE) )#select x number of cells (ha) in woodland opportunity area and get land cover value
+   print("Progress")
+  print("C")
+
+  Hab_count<-x2 %>%
+    count(lcm2020)%>%
+    mutate(average=n/100)%>%#divided by x number of replicates
+    mutate(percentage=(n/100)/Areaforplanting)#divided by x number of replicates
+  print("Progress2")
+  
+  Hab_count<-column_to_rownames(Hab_count, loc = 1)#ugly code to sort results
+  Hab_new<-as.data.frame(t(Hab_count))
+   
+  DF.newN <- Hab_new %>% 
+     filter(row.names(Hab_new) %in% c("average"))
+  # #colnames(DF.newN)<-Cnames
+   row.names(DF.newN) <- NULL
+   print("Progress3")
+   
+  Sum<-cbind(Sp_name ,Area_England, Area_Score,Area_Sp,WoodlandOpp_Sp, Areaforplanting, England_target, DF.newN )
+  
+  write.csv(Sum, paste(input_path,"Results_Upper_England/", x, "Uppertarget_Res.csv", sep=""))
+   print("Bind!")  
+  
+  #out=bind_rows(out,Sum)
+  #print(out)
+  
+  print("Done!")  
+
+#do.call(bind_rows(Sum))
+}})
+
+
+```
+
+
+
+
+Code to add all results into a single data frame
+
+Summary of column names:
+Sp_name - code for species
+Species - species name
+Area Wales - Number of ha in Wales. Sum of 100m cells in landscape
+Area score - Number of ha of Woodland opportunity in Wales
+Area_sp - Number of ha of species in country
+WoodlandOpp_sp - Number of ha available for species in Area_sp
+Areaforplanting - Estimated number of ha planted in species range - assuming planting is evenly distributed in Welsh woodland oportunity area and considering the countries planting target
+Wales target - Country target
+Other land cover columns - mean number of ha for each variable that will be converted into woodland
+
+```{r}
+
+Res<-list.files(paste(input_path, "Results_Upper_England/", sep=""), pattern = "[.]csv$", full.names=TRUE)
+head(Res)
+Data<-lapply(Res, read.csv)
+Data_com<-do.call("rbind.fill", Data)#as.data.frame(lapply(Data, rbind.fill))
+head(Data_com)
+#input_path
+Data_com<-Data_com%>%
+  mutate(Species=case_when(
+   Sp_name==1 ~"Apodemus flavicollis",
+   Sp_name==2 ~"Apodemus sylvaticus",
+   Sp_name==3 ~"Arvicola amphibius",
+   Sp_name==4 ~"Barbastella barbastellus",
+   Sp_name==5 ~"Capra aegagrus hircus",
+   Sp_name==6 ~"Capreolus capreolus",
+   Sp_name==7 ~"Castor fiber",
+   Sp_name==8 ~"Cervus elaphus",
+   Sp_name==9 ~"Cervus nippon",
+   Sp_name==10 ~"Crocidura suaveolens",
+   
+   Sp_name==11 ~"Dama dama",
+   Sp_name==12 ~"Eptesicus serotinus",
+   Sp_name==13 ~"Erinaceus europaeus",
+   Sp_name==14 ~"Felis silvestris",
+   Sp_name==15 ~"Glis glis",
+   Sp_name==16 ~"Hydropotes inermis",
+   Sp_name==17 ~"Lepus europaeus",
+   Sp_name==18 ~"Lepus timidus",
+   Sp_name==19 ~"Lutra lutra",
+   Sp_name==20 ~"Macropus rufogriseus",
+   
+   Sp_name==21 ~"Martes martes",
+   Sp_name==22 ~"Meles meles",
+   Sp_name==23 ~"Micromys minutus",
+   Sp_name==24 ~"Microtus agrestis",
+   Sp_name==25 ~"Microtus arvalis subsp orcadensis",
+   Sp_name==26 ~"Muntiacus reevesi",
+   Sp_name==27 ~"Mus musculus",
+   Sp_name==28 ~"Muscardinus avellanarius",
+   Sp_name==29 ~"Mustela erminea",
+   Sp_name==30 ~"Mustela nivalis",
+   
+   Sp_name==31 ~"Mustela putorius",
+   Sp_name==32 ~"Myodes glareolus subsp skomerensis",
+   Sp_name==33 ~"Myodes glareolus",
+   Sp_name==34 ~"Myotis alcathoe",
+   Sp_name==35 ~"Myotis bechsteinii",
+   Sp_name==36 ~"Myotis brandtii_mystacinus",
+   Sp_name==37 ~"Myotis daubentonii",
+   Sp_name==38 ~"Myotis nattereri",
+   Sp_name==39 ~"Neomys fodiens",
+   Sp_name==40 ~"Neovison vison",
+   
+   Sp_name==41 ~"Nyctalus leisleri",
+   Sp_name==42 ~"Nyctalus noctula",
+   Sp_name==43 ~"Oryctolagus cuniculus",
+   Sp_name==44 ~"Ovis aries",
+   Sp_name==45 ~"Pipistrellus nathusii",
+   Sp_name==46 ~"Pipistrellus pipistrellus sl",
+   Sp_name==47 ~"Pipistrellus pipistrellus sstr",
+   Sp_name==48 ~"Pipistrellus pygmaeus",
+   Sp_name==49 ~"Plecotus auritus",
+   Sp_name==50 ~"Plecotus austriacus",
+   
+   Sp_name==51 ~"Rattus norvegicus",
+   Sp_name==52 ~"Rhinolophus ferrumequinum",
+   Sp_name==53 ~"Rhinolophus hipposideros",
+   Sp_name==54 ~"Sciurus carolinensis 1995",
+   Sp_name==55 ~"Sciurus carolinensis 2005",
+   Sp_name==56 ~"Sciurus carolinensis 2010",
+   Sp_name==57 ~"Sciurus vulgaris 1995",
+   Sp_name==58 ~"Sciurus vulgaris 2005",
+   Sp_name==59 ~"Sciurus vulgaris 2010",
+   Sp_name==60 ~"Sorex araneus",
+   
+   Sp_name==61 ~"Sorex minutus",
+   Sp_name==62 ~"Sus scrofa",
+   Sp_name==63 ~"Talpa europaea",
+   Sp_name==64 ~"Vulpes vulpes"
+  ))%>%
+  rename(#Broadleaved_woodland = X1,
+         Coniferous_Woodland = X2,
+         Arable_Horticulture = X3,
+         Improved_Grassland = X4,
+         Neutral_Grassland = X5,
+         Calcareous_Grassland = X6,
+         Acid_grassland = X7,
+         Fen_Marsh_Swamp = X8,
+         Heather = X9,
+         Heather_grassland = X10,
+         Bog = X11,
+         Inland_Rock = X12,
+         Saltwater = X13,
+         Freshwater = X14,
+         Supralittoral_Rock = X15,
+         Supralittoral_Sediment = X16,
+         Littoral_Rock = X17,              ##Warning check if 17 is in your table
+         Littoral_Sediment = X18,
+         Saltmarsh = X19,
+         Urban = X20,
+         Suburban = X21
+         )  
+
+Data_com[is.na(Data_com)] <- 0
+
+write.csv(Data_com, paste(input_path, "Results_Upper_England/Final_England_Upper.csv", sep=""))
+
+
+```
+
+
+
+
+Code to add all results into a single data frame
+
+Summary of column names:
+Sp_name - code for species
+Species - species name
+Area Wales - Number of ha in Wales. Sum of 100m cells in landscape
+Area score - Number of ha of Woodland opportunity in Wales
+Area_sp - Number of ha of species in country
+WoodlandOpp_sp - Number of ha available for species in Area_sp
+Areaforplanting - Estimated number of ha planted in species range - assuming planting is evenly distributed in Welsh woodland oportunity area and considering the countries planting target
+Wales target - Country target
+Other land cover columns - mean number of ha for each variable that will be converted into woodland
+
+
+
+```{r}
+
+#56000 lower target
+#112000 upper target
+England_target<-61600
+# input_path <- "C:/Users/patrick.wright/Work Folders/Documents/Writing retreat/Species/"#location of shapefiles
+# Files <- list.files(input_path, pattern = "[.]shp$", full.names=TRUE)
+# Files
+# 
+# shps<-lapply(Files, readOGR)
+# 
+# 
+ Numb<-c(1:9,11:64)#number of shapefiles
+
+
+Woodland_creationBiz <- lapply(Numb,function(x) {
+  #Files1 <- paste(input_path, i, sep="")
+  Species <- shps[[x]]
+  print("1")
+  Species<-spTransform(Species, CRS("+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +units=m +no_defs"))#british national grid
+  print("2")
+  
+  Sp_name<-paste(x)
+  print("3")
+  
+  EngRasSPecies<-mask(EngRas ,Species)#create raster of a sp. distribution
+  maxV<-maxValue(EngRasSPecies)#to skip any sp that are not present in the country
+  print("Check NAs")
+  for(val in maxV){
+  if ( is.na(val))    {
+    next
+  }
+  
+  print("Check pass")
+  
+  WoodlandCre_species<-EngRasSPecies%>%
+    projectRaster(ScoreRas)%>%
+    mask(ScoreRas)#raster of woodland opportunity within sp distribution
+print("A")
+
+  crs(WoodlandCre_species)<- bng
+  Area_Sp<-cellStats(EngRasSPecies, 'sum')#total area of species in ha
+  WoodlandOpp_Sp<-cellStats(WoodlandCre_species, 'sum')#total area of woodland creation for species in ha
+  
+  
+  Areaforplanting<-round((England_target*WoodlandOpp_Sp)/Area_Score)#Estimated amount of woodland planted in the sp distribution
+
+  
+  lcmWoodCre_Spe<-lcm2020%>% #land cover map of species od woodland opp inside sp range
+    projectRaster(WoodlandCre_species,method='ngb')%>%
+    mask(WoodlandCre_species)
+  
+  lcmWoodCre_Spe[lcmWoodCre_Spe == 1] <- NA #remove any broadleaved woodland
+    print("B")
+
+  
+  
+  x2<-rdply(100,sampleRandom(lcmWoodCre_Spe, Areaforplanting, cells=TRUE) )#select x number of cells (ha) in woodland opportunity area and get land cover value
+   print("Progress")
+  print("C")
+
+  Hab_count<-x2 %>%
+    count(lcm2020)%>%
+    mutate(average=n/100)%>%#divided by x number of replicates
+    mutate(percentage=(n/100)/Areaforplanting)#divided by x number of replicates
+  print("Progress2")
+  
+  Hab_count<-column_to_rownames(Hab_count, loc = 1)#ugly code to sort results
+  Hab_new<-as.data.frame(t(Hab_count))
+   
+  DF.newN <- Hab_new %>% 
+     filter(row.names(Hab_new) %in% c("average"))
+   row.names(DF.newN) <- NULL
+   print("Progress3")
+   
+  Sum<-cbind(Sp_name ,Area_England, Area_Score,Area_Sp,WoodlandOpp_Sp, Areaforplanting, England_target, DF.newN )
+  write.csv(Sum, paste(input_path,"Results_BizUS_England/", x, "BizUstarget_Res.csv", sep=""))
+   print("Bind!")  
+  
+  
+  print("Done!")  
+
+
+}})
+
+```
+
+
+
+```{r}
+
+Res<-list.files(paste(input_path, "Results_BizUs_England/", sep=""), pattern = "[.]csv$", full.names=TRUE)
+head(Res)
+Data<-lapply(Res, read.csv)
+Data_com<-do.call("rbind.fill", Data)#as.data.frame(lapply(Data, rbind.fill))
+head(Data_com)
+#input_path
+Data_com<-Data_com%>%
+  mutate(Species=case_when(
+   Sp_name==1 ~"Apodemus flavicollis",
+   Sp_name==2 ~"Apodemus sylvaticus",
+   Sp_name==3 ~"Arvicola amphibius",
+   Sp_name==4 ~"Barbastella barbastellus",
+   Sp_name==5 ~"Capra aegagrus hircus",
+   Sp_name==6 ~"Capreolus capreolus",
+   Sp_name==7 ~"Castor fiber",
+   Sp_name==8 ~"Cervus elaphus",
+   Sp_name==9 ~"Cervus nippon",
+   Sp_name==10 ~"Crocidura suaveolens",
+   
+   Sp_name==11 ~"Dama dama",
+   Sp_name==12 ~"Eptesicus serotinus",
+   Sp_name==13 ~"Erinaceus europaeus",
+   Sp_name==14 ~"Felis silvestris",
+   Sp_name==15 ~"Glis glis",
+   Sp_name==16 ~"Hydropotes inermis",
+   Sp_name==17 ~"Lepus europaeus",
+   Sp_name==18 ~"Lepus timidus",
+   Sp_name==19 ~"Lutra lutra",
+   Sp_name==20 ~"Macropus rufogriseus",
+   
+   Sp_name==21 ~"Martes martes",
+   Sp_name==22 ~"Meles meles",
+   Sp_name==23 ~"Micromys minutus",
+   Sp_name==24 ~"Microtus agrestis",
+   Sp_name==25 ~"Microtus arvalis subsp orcadensis",
+   Sp_name==26 ~"Muntiacus reevesi",
+   Sp_name==27 ~"Mus musculus",
+   Sp_name==28 ~"Muscardinus avellanarius",
+   Sp_name==29 ~"Mustela erminea",
+   Sp_name==30 ~"Mustela nivalis",
+   
+   Sp_name==31 ~"Mustela putorius",
+   Sp_name==32 ~"Myodes glareolus subsp skomerensis",
+   Sp_name==33 ~"Myodes glareolus",
+   Sp_name==34 ~"Myotis alcathoe",
+   Sp_name==35 ~"Myotis bechsteinii",
+   Sp_name==36 ~"Myotis brandtii_mystacinus",
+   Sp_name==37 ~"Myotis daubentonii",
+   Sp_name==38 ~"Myotis nattereri",
+   Sp_name==39 ~"Neomys fodiens",
+   Sp_name==40 ~"Neovison vison",
+   
+   Sp_name==41 ~"Nyctalus leisleri",
+   Sp_name==42 ~"Nyctalus noctula",
+   Sp_name==43 ~"Oryctolagus cuniculus",
+   Sp_name==44 ~"Ovis aries",
+   Sp_name==45 ~"Pipistrellus nathusii",
+   Sp_name==46 ~"Pipistrellus pipistrellus sl",
+   Sp_name==47 ~"Pipistrellus pipistrellus sstr",
+   Sp_name==48 ~"Pipistrellus pygmaeus",
+   Sp_name==49 ~"Plecotus auritus",
+   Sp_name==50 ~"Plecotus austriacus",
+   
+   Sp_name==51 ~"Rattus norvegicus",
+   Sp_name==52 ~"Rhinolophus ferrumequinum",
+   Sp_name==53 ~"Rhinolophus hipposideros",
+   Sp_name==54 ~"Sciurus carolinensis 1995",
+   Sp_name==55 ~"Sciurus carolinensis 2005",
+   Sp_name==56 ~"Sciurus carolinensis 2010",
+   Sp_name==57 ~"Sciurus vulgaris 1995",
+   Sp_name==58 ~"Sciurus vulgaris 2005",
+   Sp_name==59 ~"Sciurus vulgaris 2010",
+   Sp_name==60 ~"Sorex araneus",
+   
+   Sp_name==61 ~"Sorex minutus",
+   Sp_name==62 ~"Sus scrofa",
+   Sp_name==63 ~"Talpa europaea",
+   Sp_name==64 ~"Vulpes vulpes"
+  ))%>%
+  rename(#Broadleaved_woodland = X1,
+         Coniferous_Woodland = X2,
+         Arable_Horticulture = X3,
+         Improved_Grassland = X4,
+         Neutral_Grassland = X5,
+         Calcareous_Grassland = X6,
+         Acid_grassland = X7,
+         Fen_Marsh_Swamp = X8,
+         Heather = X9,
+         Heather_grassland = X10,
+         Bog = X11,
+         Inland_Rock = X12,
+         Saltwater = X13,
+         Freshwater = X14,
+         Supralittoral_Rock = X15,
+         Supralittoral_Sediment = X16,
+         Littoral_Rock = X17,              ##Warning check if 17 is in your table
+         Littoral_Sediment = X18,
+         Saltmarsh = X19,
+         Urban = X20,
+         Suburban = X21
+         )  
+
+Data_com[is.na(Data_com)] <- 0
+
+write.csv(Data_com, paste(input_path, "Results_BizUs_England/Final_BizUs_England.csv", sep=""))
+
+```
