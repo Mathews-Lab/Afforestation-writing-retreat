@@ -42,22 +42,18 @@ convert_units <- function(Ha){
 
 # Function to calculate population estimates
 population_esimate <- function(area_df, density_df, species_name){
-  results <- density_df[1:7]
-  results$ProjectedArea <- replicate(length(results$LCM_Broad), 0)
   area_subset <- area_df %>% filter(Species == species_name)
-  for(habitat in results$LCM_Broad ){
-    for(name in colnames(area_subset)){
-      if(grepl(habitat, name) ==TRUE){
-        print(name)
-        results[match(habitat,results$LCM_Broad), 'ProjectedArea'] <- area_subset[1, match(name, colnames(area_subset))]
-      }
-    }
-  }
-  results$Estimate <- results$Estimate %>% as.numeric()
-  results$ProjectedArea <- results$ProjectedArea %>% as.numeric
-  results$ProjectedPop <- results$Estimate * results$ProjectedArea
+  area_subset <- stack(area_subset[4:29,]) 
+  names(area_subset) <- c("Projected_Area", "LCM_Broad")
+  area_subset$Projected_Area <- convert_units(as.numeric(area_subset$Projected_Area))
+  results <- left_join(results, area_subset)
+  results$PriorPop <- as.numeric(results$Estimate) * results$AreaTotal
+  results$PriorPop_LowerCI <- as.numeric(results$LowerCI) * results$AreaTotal
+  results$PriorPop_UpperCI <- as.numeric(results$UpperCI) * results$AreaTotal
   results$HabitatAreaChange <- results$ProjectedArea - as.numeric(results$AreaTotal)
-  results$PopChange <- results$Estimate * as.numeric(results$AreaTotal)
+  results$ProjectedPop <- as.numeric(results$Estimate) * results$ProjectedArea
+  results$ProjectedPop_LowerCI <- results$LowerCI * as.numeric(results$ProjectedArea)
+  results$ProjectedPop_UpperCI <- results$UpperCI * as.numeric(results$ProjectedArea)
   return(results)
   }
   
@@ -69,7 +65,6 @@ produce_all_results <- function(country,
                                 listoffiles,
                                 names_df,
                                 directory){
-  area_df[4:29] <- lapply(area_df[4:29], convert_units)
   for(item in names(listoffiles)){
     df <- listoffiles[[item]]
     name <- names_df$scientific[match(item, names_df$common)]
@@ -113,5 +108,6 @@ for(file in list.files('planting-simulation')){
 # Reading in the file used to match species names
 species_names <- read.csv('species names.csv')
 
-# Now produce the results separately for England, Scotland & Wales
+population_esimate(Final_Wales_Data.csv, Badger_Habitat_180302.csv, 'Meles meles')
+
 
