@@ -7,7 +7,7 @@
 #install.packages('tidyverse')
 #install.packages('rvest')
 
-library(dyplr)
+library(dplyr)
 library(tidyverse)
 library(boot)
 library(gridExtra)
@@ -35,26 +35,29 @@ library(rvest)
 
 # Convert units it Km^2
 
-convert_units <- function(Ha, species, species_names){
-  if(species_names$density[match(species, species_names$scientific)] == 'Km'){
-    km2 <- Ha*0.01
-    return(km2) 
-  } else{
-    return(Ha)
+convert_units_density <- function(df, species_name){
+  if(species_name %in% c("Apodemus flavicollis",
+                         "Apodemus sylvaticus",
+                         "Glis glis",
+                         "Microtus agrestis",
+                         "Muscardinus avellanarius",
+                         "Myodes glareolus",
+                         "Sciurus carolinensis",
+                         "Sciurus vulgaris",
+                         "Sorex araneus",
+                         "Sorex minutus")){
+    df$Estimate<- df$Estimate *100
+    df$LowerCI<- df$LowerCI *100
+    df$UpperCI <- df$UpperCI *100
+    print(df)
   }
+  return(df)
 }
 
-# Function to calculate population estimates
-population_estimate <- function(area_df, 
-                               density_df,
-                               species_name,
-                               habitat_conversion,
-                               names_df){
-  area_subset <- area_df %>% filter(Species == species_name)
-  area_subset <- stack(area_subset[4:29]) 
-  names(area_subset) <- c("Projected_Area", "LCM_Broad")
-  area_subset$Projected_Area <- convert_units(area_subset$Projected_Area, species_name, names_df)
-  colnames(density_df)[colnames(density_df) == "UrbanRural"] ="LCM_Broad"
+
+# Function to reassign habitat type names
+
+habitat_conversion_function <- function(area_subset, species_name, habitat_conversion){
   area_subset <- merge(area_subset, habitat_conversion, by = 'LCM_Broad')
   if(species_name == 'Vulpes vulpes'){
     area_subset$LCM_Broad <- area_subset$very_broad
@@ -64,23 +67,48 @@ population_estimate <- function(area_df,
     area_subset$LCM_Broad <- area_subset$density_name
   }
   area_subset2 <- aggregate(x=area_subset$Projected_Area, by = list(area_subset$LCM_Broad), FUN=sum)
-  names(area_subset2) <- c("LCM_Broad", "Projected_Area")
-  results1 <- left_join(density_df, area_subset2)
-  results1$PriorPop <- results1$AreaTotal* results1$Estimate
-  results1$PriorPop_LowerCI <- results1$LowerCI * results1$AreaTotal
-  results1$PriorPop_UpperCI <- results1$UpperCI * results1$AreaTotal
-  results1$HabitatAreaChange <- results1$Projected_Area - results1$AreaTotal
-  results1$ProjectedPop <- results1$Estimate * results1$Projected_Area
-  results1$ProjectedPop_LowerCI <- results1$LowerCI * results1$Projected_Area
-  results1$ProjectedPop_UpperCI <- results1$UpperCI * results1$Projected_Area
-  return(results1)
+  return(area_subset2)
+}
+
+# Function to calculate population estimates
+
+resolve_habitat_area <- function(df){
+  for (i in seq_along(nrow(df))){
+    if (df$LCM_Broad[i] %in% c("HedgerowsAES", "HedgerowsNonAES")){
+      df$Projected_Area[i] <- df$AreaTotal
+      } 
   }
+  return(df)
+}
+
+
+# Function to calculate population estimates
+population_estimate <- function(area_df, 
+                               density_df,
+                               species_name,
+                               habitat_key,
+                               names_df){
+  area_subset <- area_df %>% filter(Species == species_name)
+  area_subset <- area_subset[, !(colnames(area_subset) %in% c("X", "X.1"))]
+  area_subset <- stack(area_subset[9:length(area_subset)-1])
+  names(area_subset) <- c("Projected_Area", "LCM_Broad")
+  colnames(density_df)[colnames(density_df) == "UrbanRural"] ="LCM_Broad"
+  density_df <- convert_units_density(density_df, species_name)
+  area_subset2 <- habitat_conversion_function(area_subset, species_name, habitat_key)
+  names(area_subset2) <- c("LCM_Broad", "Projected_Area")
+  results <- merge(density_df, area_subset2, by = 'LCM_Broad')
+  results <- resolve_habitat_area(results) 
+  results$ProjectedPop <- results$Estimate * results$Projected_Area
+  results$ProjectedPop_LowerCI <- results$LowerCI * results$Projected_Area
+  results$ProjectedPop_UpperCI <- results$UpperCI * results$Projected_Area
+  return(results)
+}
+
   
 # Function to calculate total population change from the estimates
 
 calculate_change <- function(estimate_df, species_name){
-  estimate_df <- estimate_df[11:18]
-  estimate_sums <- as.data.frame(t(colSums(estimate_df)))
+  estimate_sums <- estimate_df %>% select_if(is.numeric) %>% map_dbl(sum)
   estimate_sums$Species <- species_name
   return(estimate_sums)
 }
@@ -101,6 +129,8 @@ produce_all_results <- function(country,
     df <- listoffiles[[item]]
     taxa <- str_split(item, '_')[[1]][1]
     name <- names_df$scientific[match(taxa, names_df$common)]
+    if(name %in% area_df$Species){
+    print(paste("Calculating population estimates for ", name))
     results <-population_estimate(area_df, df, name, habitat_names, names_df)
     if(names_df$density[match(name, species_names$scientific)] == 'Km'){
       df$Density_scale <- "Per_Ha"
@@ -109,10 +139,9 @@ produce_all_results <- function(country,
       }
     varName <- paste(item, "PopEstimate", country, sep="_")
     assign(varName, results, envir = parent.frame())
-    write.csv(results, paste(directory, varName, ".csv"))
-    print(paste("Calculated population estimates for ", name))
+    write.csv(results, paste(directory, varName, ".csv", sep=""))
     summary <- calculate_change(results, name)
-    summaryfiles[[name]] <- summary
+    summaryfiles[[name]] <- summary}
   }
   summary_all <- bind_rows(unname(summaryfiles))
   return(summary_all)
@@ -149,4 +178,6 @@ for(file in list.files('planting-simulation')){
 species_names <- read.csv('species names.csv')
 habitat_conversion <- read.csv('LCM_conversion.csv')
 
-produce_all_results('Wales', Final_Wales_Data, DensityFiles, species_names, habitat_conversion, 'results/')
+produce_all_results('England', Final_BizUs_England, DensityFiles, species_names, habitat_conversion, 'results/')
+
+df <- population_estimate(Final_BizUs_England, CWDeer_Habitat_171107, "Hydropotes inermis", habitat_conversion, species_names)
