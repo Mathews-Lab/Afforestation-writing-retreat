@@ -18,25 +18,10 @@ library(rvest)
 
 ##### SECTION FOR FUNCTIONS USED IN DATA WRANGLING & ANALYSIS ####
 
-# This is where the population density esimtates are stored in github 
-# (not required if working from cloned repo)
-#url <- 'https://github.com/Mathews-Lab/Afforestation-writing-retreat/tree/main/density-estimates/'
+# Convert density estimates to Ha^-1
 
-#github_files <-function(folder_url){
-  #listoffiles <-folder_url %>%
-    #read_html() %>%
-    #html_nodes(xpath = '//*[@role="rowheader"]') %>%
-    #html_nodes('span a') %>%
-    #html_attr('href') %>%
-   #sub('blob/', '', .) %>%
-    #paste0('https://raw.github.com', .)
-  #return(listoffiles)
-  #}
-
-# Convert units it Km^2
-
-convert_units_density <- function(df, species_name){
-  if(species_name %in% c("Apodemus flavicollis",
+convert_units_density <- function(df, species_name){ 
+  if(!(species_name %in% c("Apodemus flavicollis",
                          "Apodemus sylvaticus",
                          "Glis glis",
                          "Microtus agrestis",
@@ -45,11 +30,10 @@ convert_units_density <- function(df, species_name){
                          "Sciurus carolinensis",
                          "Sciurus vulgaris",
                          "Sorex araneus",
-                         "Sorex minutus")){
-    df$Estimate<- df$Estimate *100
-    df$LowerCI<- df$LowerCI *100
-    df$UpperCI <- df$UpperCI *100
-    print(df)
+                         "Sorex minutus"))){
+    df$Estimate<- df$Estimate *0.01
+    df$LowerCI<- df$LowerCI *0.01
+    df$UpperCI <- df$UpperCI *0.01
   }
   return(df)
 }
@@ -88,22 +72,38 @@ population_estimate <- function(area_df,
                                species_name,
                                habitat_key,
                                names_df){
-  area_subset <- area_df %>% filter(Species == species_name)
-  area_subset <- area_subset[, !(colnames(area_subset) %in% c("X", "X.1"))]
-  area_subset <- stack(area_subset[9:length(area_subset)-1])
+  area_subset <- area_df %>% filter(Species == species_name) %>% rename(Broadleaved_woodland=Areaforplanting)
+  print(area_subset)
+  area_subset <- stack(area_subset[, !(colnames(area_subset) %in% c("X", 
+                                                              "X.1",
+                                                              "Sp_name",
+                                                              "Area_Wales",
+                                                              "Area_England",
+                                                              "Area_SP",
+                                                              "Area_Score",
+                                                              "WoodlandOpp_Sp",
+                                                              "Wales_Target",
+                                                              "Species"
+                                                              ))])
   names(area_subset) <- c("Projected_Area", "LCM_Broad")
   colnames(density_df)[colnames(density_df) == "UrbanRural"] ="LCM_Broad"
+  print(area_subset)
   density_df <- convert_units_density(density_df, species_name)
   area_subset2 <- habitat_conversion_function(area_subset, species_name, habitat_key)
   names(area_subset2) <- c("LCM_Broad", "Projected_Area")
   results <- merge(density_df, area_subset2, by = 'LCM_Broad')
-  results <- resolve_habitat_area(results) 
-  results$ProjectedPop <- results$Estimate * results$Projected_Area
-  results$ProjectedPop_LowerCI <- results$LowerCI * results$Projected_Area
-  results$ProjectedPop_UpperCI <- results$UpperCI * results$Projected_Area
+  results <- resolve_habitat_area(results)
+  results$Projected_Area <- ifelse(results$LCM_Broad == "Broad_leaved,_mixed_and_yew_woodland", results$Projected_Area, -results$Projected_Area)
+  results$ProjectedChange <- results$Estimate * results$Projected_Area
+  results$ProjectedChange_LowerCI <- results$LowerCI * results$Projected_Area
+  results$ProjectedChange_UpperCI <- results$UpperCI * results$Projected_Area
   return(results)
 }
 
+population_estimate(Final_BizUs_England, Rabbit_Habitat_171107,
+                    'Oryctolagus cuniculus',
+                    habitat_conversion,
+                    species_names)
   
 # Function to calculate total population change from the estimates
 
@@ -132,17 +132,15 @@ produce_all_results <- function(country,
     if(name %in% area_df$Species){
     print(paste("Calculating population estimates for ", name))
     results <-population_estimate(area_df, df, name, habitat_names, names_df)
-    if(names_df$density[match(name, species_names$scientific)] == 'Km'){
-      df$Density_scale <- "Per_Ha"
-      } else {
-      df$Density_scale <- "Per_Km^2"
-      }
     varName <- paste(item, "PopEstimate", country, sep="_")
     assign(varName, results, envir = parent.frame())
     write.csv(results, paste(directory, varName, ".csv", sep=""))
     summary <- calculate_change(results, name)
     summaryfiles[[name]] <- summary}
+   else {
+    print(paste("Simulation was not available for ", name)) }
   }
+  print("CALCULATED ALL ESTIMATES")
   summary_all <- bind_rows(unname(summaryfiles))
   return(summary_all)
 }
@@ -178,6 +176,6 @@ for(file in list.files('planting-simulation')){
 species_names <- read.csv('species names.csv')
 habitat_conversion <- read.csv('LCM_conversion.csv')
 
-produce_all_results('England', Final_BizUs_England, DensityFiles, species_names, habitat_conversion, 'results/')
+test <- produce_all_results('Wales', Final_Wales_Upper, DensityFiles, species_names, habitat_conversion, 'results/')
 
-df <- population_estimate(Final_BizUs_England, CWDeer_Habitat_171107, "Hydropotes inermis", habitat_conversion, species_names)
+
