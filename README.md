@@ -8,3 +8,4 @@ Folders with data:
 
 Code:
 - Pop_estimates.R is used to calculate the estimated population densities from the simulated planting scenarios
+- WoodlandOppchangeEngland.Rmd is used to simulate planting scenarios in each species range
